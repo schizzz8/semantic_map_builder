@@ -1,17 +1,20 @@
 #pragma once
 
-#include <iostream>
 #include <Eigen/Geometry>
+
 #include "opencv2/imgproc.hpp"
 #include <opencv2/highgui.hpp>
+
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/common/transforms.h>
 #include <pcl/common/common.h>
 #include <pcl/filters/passthrough.h>
+
 #include "tf/tf.h"
 #include "tf/transform_listener.h"
 #include "tf/transform_datatypes.h"
+
 #include <lucrezio_logical_camera/LogicalImage.h>
 
 namespace semantic_map_builder {
@@ -65,7 +68,6 @@ public:
     SemanticMapBuilder();
 
     inline void setK(const Eigen::Matrix3f& K_){_K = K_; _invK = _K.inverse();}
-    inline void setRobotPose(const Eigen::Isometry3f& robot_pose_){_robot_pose = robot_pose_;}
     inline void setRGBImage(cv::Mat* rgb_image_){_rgb_image = rgb_image_;}
     inline void setDepthCloud(const PointCloudType::ConstPtr& depth_cloud_){_depth_cloud = depth_cloud_;}
 
@@ -77,17 +79,13 @@ public:
                                  const cv::Mat &depth_image,
                                  const Eigen::Isometry3f& depth_camera_transform);
 
-private:
+protected:
     float _raw_depth_scale;
     float _camera_height;
     Eigen::Matrix3f _K,_invK;
-    Eigen::Isometry3f _robot_pose;
     cv::Mat* _rgb_image;
     PointCloudType::ConstPtr _depth_cloud;
-
-
     Eigen::Isometry3f tfTransform2eigen(const tf::Transform& p);
-
     tf::Transform eigen2tfTransform(const Eigen::Isometry3f& T);
 
 };

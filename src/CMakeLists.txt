@@ -1,2 +1,2 @@
 add_subdirectory(semantic_map_builder)
-add_subdirectory(nodes)
+add_subdirectory(apps)

@@ -6,7 +6,6 @@ namespace semantic_map_builder{
 
 SemanticMapBuilder::SemanticMapBuilder(){
     _K = Eigen::Matrix3f::Zero();
-    _robot_pose = Eigen::Isometry3f::Identity();
     _rgb_image = NULL;
     _depth_cloud = NULL;
 }
