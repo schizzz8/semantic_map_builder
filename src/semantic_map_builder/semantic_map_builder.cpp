@@ -10,9 +10,10 @@ SemanticMapBuilder::SemanticMapBuilder(){
     _depth_cloud = NULL;
 }
 
-Detections SemanticMapBuilder::detectObjects(const Eigen::Isometry3f &depth_camera_transform,
-                                             const lucrezio_logical_camera::LogicalImage::ConstPtr &logical_image_msg,
-                                             const PointCloudType::ConstPtr &depth_cloud_msg){
+Detections SemanticMapBuilder::detectObjects(cv::Mat rgb_image,
+                                             const Eigen::Isometry3f& depth_camera_transform,
+                                             const lucrezio_logical_camera::LogicalImage::ConstPtr& logical_image_msg,
+                                             const PointCloudType::ConstPtr& depth_cloud_msg){
     Detections detections;
 
     PointCloudType::Ptr local_map_cloud (new PointCloudType ());
@@ -105,8 +106,17 @@ Detections SemanticMapBuilder::detectObjects(const Eigen::Isometry3f &depth_came
                                            (float)(p_min.x+p_max.x)/2.0f,
                                            (float)(p_max.y-p_min.y),
                                            (float)(p_max.x-p_min.x)));
+                                           
+            cerr << "Min x: " << p_min.x << " - Max x: " << p_max.x << " - Min y: " << p_min.y << " - Max y: " << p_max.y << endl;
+            cv::rectangle(rgb_image,
+                          cv::Rect ((p_min.y+p_max.y)/2.0f,
+                                    (p_min.x+p_max.x)/2.0f,
+                                    p_max.y-p_min.y,
+                                    p_max.x-p_min.x),
+                          cv::Scalar(255,0,0));
         }
     }
+    cv::imwrite("detections.png",rgb_image);
     return detections;
 }
 
@@ -197,8 +207,8 @@ Objects SemanticMapBuilder::extractBoundingBoxes(const Detections &detections, c
         size = Eigen::Vector3f(x_max-x_min,y_max-y_min,z_max-z_min);
 
         objects.push_back(Object(detection.type(),
-                                    centroid,
-                                    size));
+                                 centroid,
+                                 size));
 
     }
     return objects;

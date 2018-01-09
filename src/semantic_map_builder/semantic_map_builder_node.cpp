@@ -25,7 +25,6 @@ SemanticMapBuilderNode::SemanticMapBuilderNode(ros::NodeHandle nh_):
                                      this);
 
     _synchronizer.registerCallback(boost::bind(&SemanticMapBuilderNode::filterCallback, this, _1, _2, _3, _4));
-    ROS_INFO("Starting training set generator node!");
 }
 
 void SemanticMapBuilderNode::cameraInfoCallback(const CameraInfo::ConstPtr &camera_info_msg){
@@ -55,6 +54,10 @@ void SemanticMapBuilderNode::filterCallback(const LogicalImage::ConstPtr &logica
                                             const PointCloudType::ConstPtr &depth_cloud_msg,
                                             const Image::ConstPtr &rgb_image_msg,
                                             const Image::ConstPtr &depth_image_msg){
+  if(_got_info && !logical_image_msg->models.empty()){
+
+  ROS_INFO("Executing filter callback!");
+
     //Extract rgb and depth image from ROS messages
     cv_bridge::CvImageConstPtr rgb_cv_ptr,depth_cv_ptr;
     try{
@@ -86,13 +89,20 @@ void SemanticMapBuilderNode::filterCallback(const LogicalImage::ConstPtr &logica
     }
     Eigen::Isometry3f depth_camera_transform = tfTransform2eigen(depth_camera_pose);
 
-    //Detect Objects
-    Detections detections = detectObjects(depth_camera_transform,
+    Detections detections = detectObjects(rgb_image.clone(),
+                                          depth_camera_transform,
                                           logical_image_msg,
                                           depth_cloud_msg);
 
     Objects local_map = extractBoundingBoxes(detections,
                                              depth_image,
                                              depth_camera_transform);
+
+    _logical_image_sub.unsubscribe();
+    _depth_cloud_sub.unsubscribe();
+    _rgb_image_sub.unsubscribe();
+    _depth_image_sub.unsubscribe();
+    }
+
 }
 }

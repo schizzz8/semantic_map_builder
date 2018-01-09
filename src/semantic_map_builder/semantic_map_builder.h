@@ -71,7 +71,8 @@ public:
     inline void setRGBImage(cv::Mat* rgb_image_){_rgb_image = rgb_image_;}
     inline void setDepthCloud(const PointCloudType::ConstPtr& depth_cloud_){_depth_cloud = depth_cloud_;}
 
-    Detections detectObjects(const Eigen::Isometry3f& depth_camera_transform,
+    Detections detectObjects(cv::Mat rgb_image,
+                             const Eigen::Isometry3f& depth_camera_transform,
                              const lucrezio_logical_camera::LogicalImage::ConstPtr& logical_image_msg,
                              const PointCloudType::ConstPtr& depth_cloud_msg);
 

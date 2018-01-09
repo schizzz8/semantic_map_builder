@@ -15,5 +15,6 @@ int main(int argc, char** argv){
 
     ros::spin();
 
+    ROS_INFO("Done!");
     return 0;
 }

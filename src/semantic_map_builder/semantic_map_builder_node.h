@@ -45,6 +45,5 @@ protected:
                                                             sensor_msgs::Image> FilterSyncPolicy;
     message_filters::Synchronizer<FilterSyncPolicy> _synchronizer;
 
-
 };
 }
