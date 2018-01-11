@@ -81,6 +81,18 @@ public:
                                  const Eigen::Isometry3f& depth_camera_transform);
 
 protected:
+    PointCloudType::Ptr transformCloud(const PointCloudType::ConstPtr &in_cloud,
+                                       const Eigen::Isometry3f& transform,
+                                       const std::string& frame_id);
+
+    PointCloudType::Ptr modelBoundingBox(const lucrezio_logical_camera::Model& model,
+                                         const Eigen::Isometry3f& transform);
+
+    PointCloudType::Ptr filterCloud(const PointCloudType::ConstPtr &in_cloud,
+                                    const pcl::PointXYZ& min_pt,
+                                    const pcl::PointXYZ& max_pt);
+
+
     float _raw_depth_scale;
     float _camera_height;
     Eigen::Matrix3f _K,_invK;

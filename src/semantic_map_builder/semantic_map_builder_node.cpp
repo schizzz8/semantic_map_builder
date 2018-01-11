@@ -94,9 +94,9 @@ void SemanticMapBuilderNode::filterCallback(const LogicalImage::ConstPtr &logica
                                           logical_image_msg,
                                           depth_cloud_msg);
 
-    Objects local_map = extractBoundingBoxes(detections,
-                                             depth_image,
-                                             depth_camera_transform);
+//    Objects local_map = extractBoundingBoxes(detections,
+//                                             depth_image,
+//                                             depth_camera_transform);
 
     _logical_image_sub.unsubscribe();
     _depth_cloud_sub.unsubscribe();
