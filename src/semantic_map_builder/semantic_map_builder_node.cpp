@@ -54,54 +54,54 @@ void SemanticMapBuilderNode::filterCallback(const LogicalImage::ConstPtr &logica
                                             const PointCloudType::ConstPtr &depth_cloud_msg,
                                             const Image::ConstPtr &rgb_image_msg,
                                             const Image::ConstPtr &depth_image_msg){
-  if(_got_info && !logical_image_msg->models.empty()){
+    if(_got_info && !logical_image_msg->models.empty()){
 
-  ROS_INFO("Executing filter callback!");
+        ROS_INFO("Executing filter callback!");
 
-    //Extract rgb and depth image from ROS messages
-    cv_bridge::CvImageConstPtr rgb_cv_ptr,depth_cv_ptr;
-    try{
-        rgb_cv_ptr = cv_bridge::toCvShare(rgb_image_msg);
-        depth_cv_ptr = cv_bridge::toCvShare(depth_image_msg);
-    } catch (cv_bridge::Exception& e) {
-        ROS_ERROR("cv_bridge exception: %s", e.what());
-        return;
-    }
-    cv::Mat rgb_image = rgb_cv_ptr->image.clone();
+        //Extract rgb and depth image from ROS messages
+        cv_bridge::CvImageConstPtr rgb_cv_ptr,depth_cv_ptr;
+        try{
+            rgb_cv_ptr = cv_bridge::toCvShare(rgb_image_msg);
+            depth_cv_ptr = cv_bridge::toCvShare(depth_image_msg);
+        } catch (cv_bridge::Exception& e) {
+            ROS_ERROR("cv_bridge exception: %s", e.what());
+            return;
+        }
+        cv::Mat rgb_image = rgb_cv_ptr->image.clone();
 
-    cv::Mat depth_image;
-    depth_cv_ptr->image.convertTo(depth_image,CV_16UC1,1000);
+        cv::Mat depth_image;// = depth_cv_ptr->image.clone();
+        depth_cv_ptr->image.convertTo(depth_image,CV_16UC1,1000);
 
-    //Listen to depth camera pose
-    tf::StampedTransform depth_camera_pose;
-    try {
-        _listener.waitForTransform("map",
-                                   "camera_depth_optical_frame",
-                                   ros::Time(0),
-                                   ros::Duration(3));
-        _listener.lookupTransform("map",
-                                  "camera_depth_optical_frame",
-                                  ros::Time(0),
-                                  depth_camera_pose);
-    }
-    catch(tf::TransformException ex) {
-        ROS_ERROR("%s", ex.what());
-    }
-    Eigen::Isometry3f depth_camera_transform = tfTransform2eigen(depth_camera_pose);
+        //Listen to depth camera pose
+        tf::StampedTransform depth_camera_pose;
+        try {
+            _listener.waitForTransform("map",
+                                       "camera_depth_optical_frame",
+                                       ros::Time(0),
+                                       ros::Duration(3));
+            _listener.lookupTransform("map",
+                                      "camera_depth_optical_frame",
+                                      ros::Time(0),
+                                      depth_camera_pose);
+        }
+        catch(tf::TransformException ex) {
+            ROS_ERROR("%s", ex.what());
+        }
+        Eigen::Isometry3f depth_camera_transform = tfTransform2eigen(depth_camera_pose);
 
-    Detections detections = detectObjects(rgb_image.clone(),
-                                          depth_camera_transform,
-                                          logical_image_msg,
-                                          depth_cloud_msg);
+        Detections detections = detectObjects(rgb_image.clone(),
+                                              depth_camera_transform,
+                                              logical_image_msg,
+                                              depth_cloud_msg);
 
-//    Objects local_map = extractBoundingBoxes(detections,
-//                                             depth_image,
-//                                             depth_camera_transform);
+        Objects local_map = extractBoundingBoxes(detections,
+                                                 depth_image,
+                                                 depth_camera_transform);
 
-    _logical_image_sub.unsubscribe();
-    _depth_cloud_sub.unsubscribe();
-    _rgb_image_sub.unsubscribe();
-    _depth_image_sub.unsubscribe();
+        _logical_image_sub.unsubscribe();
+        _depth_cloud_sub.unsubscribe();
+        _rgb_image_sub.unsubscribe();
+        _depth_image_sub.unsubscribe();
     }
 
 }

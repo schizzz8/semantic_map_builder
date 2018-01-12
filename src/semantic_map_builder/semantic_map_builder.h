@@ -24,27 +24,14 @@ typedef pcl::PointCloud<pcl::PointXYZ> PointCloudType;
 class Detection{
 public:
     Detection(std::string type_=0,
-              float x_ = 0.0f,
-              float y_ = 0.0f,
-              float width_ = 0.0f,
-              float height_ = 0.0f):
-        _type(type_),
-        _x(x_),
-        _y(y_),
-        _width(width_),
-        _height(height_){}
-
-    inline const std::string& type() const {return _type;}
-    inline const float& x() const {return _x;}
-    inline const float& y() const {return _y;}
-    inline const float& width() const {return _width;}
-    inline const float& height() const {return _height;}
-private:
-    std::string _type;
-    float _x;
-    float _y;
-    float _width;
-    float _height;
+              Eigen::Vector2i p_min_ = Eigen::Vector2i::Zero(),
+              Eigen::Vector2i p_max_ = Eigen::Vector2i::Zero()):
+        type(type_),
+        p_min(p_min_),
+        p_max(p_max_){}
+    std::string type;
+    Eigen::Vector2i p_min;
+    Eigen::Vector2i p_max;
 };
 
 class Object{
@@ -95,11 +82,13 @@ protected:
 
     float _raw_depth_scale;
     float _camera_height;
+    float _focal_length;
     Eigen::Matrix3f _K,_invK;
     cv::Mat* _rgb_image;
     PointCloudType::ConstPtr _depth_cloud;
     Eigen::Isometry3f tfTransform2eigen(const tf::Transform& p);
     tf::Transform eigen2tfTransform(const Eigen::Isometry3f& T);
+    void convert_16UC1_to_32FC1(cv::Mat& dest, const cv::Mat& src, float scale = 0.001f);
 
 };
 
