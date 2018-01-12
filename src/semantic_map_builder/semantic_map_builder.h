@@ -10,6 +10,8 @@
 #include <pcl/common/transforms.h>
 #include <pcl/common/common.h>
 #include <pcl/filters/passthrough.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/filters/statistical_outlier_removal.h>
 
 #include "tf/tf.h"
 #include "tf/transform_listener.h"
@@ -23,15 +25,18 @@ typedef pcl::PointCloud<pcl::PointXYZ> PointCloudType;
 
 class Detection{
 public:
-    Detection(std::string type_=0,
-              Eigen::Vector2i p_min_ = Eigen::Vector2i::Zero(),
-              Eigen::Vector2i p_max_ = Eigen::Vector2i::Zero()):
+    Detection(const std::string& type_=0,
+              const Eigen::Vector2i& p_min_ = Eigen::Vector2i::Zero(),
+              const Eigen::Vector2i& p_max_ = Eigen::Vector2i::Zero(),
+              const std::vector<Eigen::Vector2i>& pixels_ = std::vector<Eigen::Vector2i>()):
         type(type_),
         p_min(p_min_),
-        p_max(p_max_){}
+        p_max(p_max_),
+        pixels(pixels_){}
     std::string type;
     Eigen::Vector2i p_min;
     Eigen::Vector2i p_max;
+    std::vector<Eigen::Vector2i> pixels;
 };
 
 class Object{
@@ -59,13 +64,11 @@ public:
     inline void setDepthCloud(const PointCloudType::ConstPtr& depth_cloud_){_depth_cloud = depth_cloud_;}
 
     Detections detectObjects(cv::Mat rgb_image,
-                             const Eigen::Isometry3f& depth_camera_transform,
                              const lucrezio_logical_camera::LogicalImage::ConstPtr& logical_image_msg,
                              const PointCloudType::ConstPtr& depth_cloud_msg);
 
     Objects extractBoundingBoxes(const Detections& detections,
-                                 const cv::Mat &depth_image,
-                                 const Eigen::Isometry3f& depth_camera_transform);
+                                 const cv::Mat &depth_image);
 
 protected:
     PointCloudType::Ptr transformCloud(const PointCloudType::ConstPtr &in_cloud,
@@ -84,12 +87,11 @@ protected:
     float _camera_height;
     float _focal_length;
     Eigen::Matrix3f _K,_invK;
+    Eigen::Isometry3f _depth_camera_transform;
     cv::Mat* _rgb_image;
     PointCloudType::ConstPtr _depth_cloud;
     Eigen::Isometry3f tfTransform2eigen(const tf::Transform& p);
     tf::Transform eigen2tfTransform(const Eigen::Isometry3f& T);
-    void convert_16UC1_to_32FC1(cv::Mat& dest, const cv::Mat& src, float scale = 0.001f);
-
 };
 
 }

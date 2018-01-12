@@ -87,16 +87,14 @@ void SemanticMapBuilderNode::filterCallback(const LogicalImage::ConstPtr &logica
         catch(tf::TransformException ex) {
             ROS_ERROR("%s", ex.what());
         }
-        Eigen::Isometry3f depth_camera_transform = tfTransform2eigen(depth_camera_pose);
+        _depth_camera_transform = tfTransform2eigen(depth_camera_pose);
 
         Detections detections = detectObjects(rgb_image.clone(),
-                                              depth_camera_transform,
                                               logical_image_msg,
                                               depth_cloud_msg);
 
         Objects local_map = extractBoundingBoxes(detections,
-                                                 depth_image,
-                                                 depth_camera_transform);
+                                                 depth_image);
 
         _logical_image_sub.unsubscribe();
         _depth_cloud_sub.unsubscribe();
