@@ -13,7 +13,12 @@ int main(int argc, char** argv){
     ROS_INFO("Starting semantic_map_builder_node!");
     SemanticMapBuilderNode builder(nh);
 
-    ros::spin();
+    //ros::spin();
+    ros::Rate loop_rate(1);
+    while(ros::ok()){
+        ros::spinOnce();
+        loop_rate.sleep();
+    }
 
     ROS_INFO("Done!");
     return 0;

@@ -44,11 +44,10 @@ public:
     Object(const std::string& type_ = "",
            const Eigen::Vector3f& centroid_ = Eigen::Vector3f::Zero(),
            const Eigen::Vector3f& size_ = Eigen::Vector3f::Zero()):
-        _type(type_),_centroid(centroid_), _size(size_){}
-private:
-    std::string _type;
-    Eigen::Vector3f _centroid;
-    Eigen::Vector3f _size;
+        type(type_),centroid(centroid_),size(size_){}
+    std::string type;
+    Eigen::Vector3f centroid;
+    Eigen::Vector3f size;
 };
 
 typedef std::vector<Detection> Detections;
@@ -60,15 +59,12 @@ public:
     SemanticMapBuilder();
 
     inline void setK(const Eigen::Matrix3f& K_){_K = K_; _invK = _K.inverse();}
-    inline void setRGBImage(cv::Mat* rgb_image_){_rgb_image = rgb_image_;}
+    void setImages(const cv::Mat& rgb_image_, const cv::Mat& depth_image_);
     inline void setDepthCloud(const PointCloudType::ConstPtr& depth_cloud_){_depth_cloud = depth_cloud_;}
+    inline const cv::Mat& rgbImage(){return _rgb_image;}
 
-    Detections detectObjects(cv::Mat rgb_image,
-                             const lucrezio_logical_camera::LogicalImage::ConstPtr& logical_image_msg,
-                             const PointCloudType::ConstPtr& depth_cloud_msg);
-
-    Objects extractBoundingBoxes(const Detections& detections,
-                                 const cv::Mat &depth_image);
+    void detectObjects(const lucrezio_logical_camera::LogicalImage::ConstPtr& logical_image_msg);
+    Objects extractBoundingBoxes(const cv::Mat &depth_image);
 
 protected:
     PointCloudType::Ptr transformCloud(const PointCloudType::ConstPtr &in_cloud,
@@ -82,14 +78,23 @@ protected:
                                     const pcl::PointXYZ& min_pt,
                                     const pcl::PointXYZ& max_pt);
 
+    void computeDetection(Eigen::Vector2i& p_min,
+                          Eigen::Vector2i& p_max,
+                          std::vector<Eigen::Vector2i>& pixels,
+                          const PointCloudType::Ptr& in_cloud);
+
 
     float _raw_depth_scale;
     float _camera_height;
     float _focal_length;
     Eigen::Matrix3f _K,_invK;
     Eigen::Isometry3f _depth_camera_transform;
-    cv::Mat* _rgb_image;
+    Eigen::Isometry3f _inverse_depth_camera_transform;
+    cv::Mat _rgb_image;
+    cv::Mat _depth_image;
     PointCloudType::ConstPtr _depth_cloud;
+    Detections _detections;
+
     Eigen::Isometry3f tfTransform2eigen(const tf::Transform& p);
     tf::Transform eigen2tfTransform(const Eigen::Isometry3f& T);
 };

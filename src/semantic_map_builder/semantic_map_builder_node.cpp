@@ -14,7 +14,8 @@ SemanticMapBuilderNode::SemanticMapBuilderNode(ros::NodeHandle nh_):
     _depth_cloud_sub(_nh,"/camera/depth/points",1),
     _rgb_image_sub(_nh,"/camera/rgb/image_raw", 1),
     _depth_image_sub(_nh,"/camera/depth/image_raw", 1),
-    _synchronizer(FilterSyncPolicy(10),_logical_image_sub,_depth_cloud_sub,_rgb_image_sub,_depth_image_sub){
+    _synchronizer(FilterSyncPolicy(10),_logical_image_sub,_depth_cloud_sub,_rgb_image_sub,_depth_image_sub),
+    _it(_nh){
 
     _raw_depth_scale = 0.001;
     _camera_height = 1.0f;
@@ -25,6 +26,11 @@ SemanticMapBuilderNode::SemanticMapBuilderNode(ros::NodeHandle nh_):
                                      this);
 
     _synchronizer.registerCallback(boost::bind(&SemanticMapBuilderNode::filterCallback, this, _1, _2, _3, _4));
+
+    _label_image_pub = _it.advertise("/camera/rgb/label_image", 1);
+
+    _shape = visualization_msgs::Marker::CUBE;
+    _markers_pub = _nh.advertise<visualization_msgs::MarkerArray>("visualization_markers",1);
 }
 
 void SemanticMapBuilderNode::cameraInfoCallback(const CameraInfo::ConstPtr &camera_info_msg){
@@ -56,7 +62,9 @@ void SemanticMapBuilderNode::filterCallback(const LogicalImage::ConstPtr &logica
                                             const Image::ConstPtr &depth_image_msg){
     if(_got_info && !logical_image_msg->models.empty()){
 
+        ROS_INFO("--------------------------");
         ROS_INFO("Executing filter callback!");
+        ROS_INFO("--------------------------");
 
         //Extract rgb and depth image from ROS messages
         cv_bridge::CvImageConstPtr rgb_cv_ptr,depth_cv_ptr;
@@ -68,9 +76,9 @@ void SemanticMapBuilderNode::filterCallback(const LogicalImage::ConstPtr &logica
             return;
         }
         cv::Mat rgb_image = rgb_cv_ptr->image.clone();
-
-        cv::Mat depth_image;// = depth_cv_ptr->image.clone();
+        cv::Mat depth_image;
         depth_cv_ptr->image.convertTo(depth_image,CV_16UC1,1000);
+        this->setImages(rgb_image.clone(),depth_image.clone());
 
         //Listen to depth camera pose
         tf::StampedTransform depth_camera_pose;
@@ -88,18 +96,61 @@ void SemanticMapBuilderNode::filterCallback(const LogicalImage::ConstPtr &logica
             ROS_ERROR("%s", ex.what());
         }
         _depth_camera_transform = tfTransform2eigen(depth_camera_pose);
+        _inverse_depth_camera_transform = _depth_camera_transform.inverse();
 
-        Detections detections = detectObjects(rgb_image.clone(),
-                                              logical_image_msg,
-                                              depth_cloud_msg);
+        //detect objects
+        this->setDepthCloud(depth_cloud_msg);
+        this->detectObjects(logical_image_msg);
+        sensor_msgs::ImagePtr label_image_msg = cv_bridge::CvImage(std_msgs::Header(),
+                                                                   "bgr8",
+                                                                   this->rgbImage()).toImageMsg();
+        _label_image_pub.publish(label_image_msg);
 
-        Objects local_map = extractBoundingBoxes(detections,
-                                                 depth_image);
+        //extract bounding boxes
+        Objects objects = extractBoundingBoxes(depth_image);
+        if(!objects.empty() && _markers_pub.getNumSubscribers() > 0){
+            visualization_msgs::MarkerArray markers;
 
-        _logical_image_sub.unsubscribe();
-        _depth_cloud_sub.unsubscribe();
-        _rgb_image_sub.unsubscribe();
-        _depth_image_sub.unsubscribe();
+            for(int i=0; i < objects.size(); ++i){
+                visualization_msgs::Marker marker;
+                marker.header.frame_id = "/map";
+                marker.header.stamp = ros::Time::now();
+                marker.ns = "basic_shapes";
+                marker.id = i;
+                marker.type = _shape;
+                marker.action = visualization_msgs::Marker::ADD;
+
+                const Object& object = objects[i];
+
+                marker.pose.position.x = object.centroid.x();
+                marker.pose.position.y = object.centroid.y();
+                marker.pose.position.z = object.centroid.z();
+                marker.pose.orientation.x = 0.0;
+                marker.pose.orientation.y = 0.0;
+                marker.pose.orientation.z = 0.0;
+                marker.pose.orientation.w = 1.0;
+
+                marker.scale.x = object.size.x();
+                marker.scale.y = object.size.y();
+                marker.scale.z = object.size.z();
+
+                marker.color.r = 0.0f;
+                marker.color.g = 1.0f;
+                marker.color.b = 0.0f;
+                marker.color.a = 1.0;
+
+                marker.lifetime = ros::Duration();
+
+                markers.markers.push_back(marker);
+            }
+
+            _markers_pub.publish(markers);
+        }
+
+        //        _logical_image_sub.unsubscribe();
+        //        _depth_cloud_sub.unsubscribe();
+        //        _rgb_image_sub.unsubscribe();
+        //        _depth_image_sub.unsubscribe();
     }
 
 }

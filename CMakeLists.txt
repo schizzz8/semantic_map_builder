@@ -24,6 +24,7 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
   std_msgs
+  visualization_msgs
   lucrezio_logical_camera
 )
 
@@ -126,7 +127,7 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 catkin_package(
   INCLUDE_DIRS src
   LIBRARIES semantic_map_builder_library
-  CATKIN_DEPENDS cv_bridge geometry_msgs image_transport nav_msgs pcl_ros roscpp rospy sensor_msgs std_msgs lucrezio_logical_camera
+  CATKIN_DEPENDS cv_bridge geometry_msgs image_transport nav_msgs pcl_ros roscpp rospy sensor_msgs std_msgs visualization_msgs lucrezio_logical_camera
 #  DEPENDS system_lib
 )
 

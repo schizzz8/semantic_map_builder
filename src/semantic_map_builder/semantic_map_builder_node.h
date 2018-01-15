@@ -11,6 +11,9 @@
 #include <sensor_msgs/CameraInfo.h>
 #include <sensor_msgs/Image.h>
 #include <lucrezio_logical_camera/LogicalImage.h>
+#include <image_transport/image_transport.h>
+#include <visualization_msgs/MarkerArray.h>
+
 
 namespace semantic_map_builder{
 
@@ -45,5 +48,10 @@ protected:
                                                             sensor_msgs::Image> FilterSyncPolicy;
     message_filters::Synchronizer<FilterSyncPolicy> _synchronizer;
 
+    image_transport::ImageTransport _it;
+    image_transport::Publisher _label_image_pub;
+
+    uint32_t _shape;
+    ros::Publisher _markers_pub;
 };
 }

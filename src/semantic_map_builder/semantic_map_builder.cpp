@@ -6,12 +6,17 @@ namespace semantic_map_builder{
 
 SemanticMapBuilder::SemanticMapBuilder(){
     _K = Eigen::Matrix3f::Zero();
-    _rgb_image = NULL;
     _depth_cloud = NULL;
     _camera_height = 0.5;
     _focal_length = 277.1273455955935;
     _raw_depth_scale = 1e-3;
     _depth_camera_transform = Eigen::Isometry3f::Identity();
+    _inverse_depth_camera_transform = Eigen::Isometry3f::Identity();
+}
+
+void SemanticMapBuilder::setImages(const cv::Mat &rgb_image_, const cv::Mat &depth_image_){
+    _rgb_image = rgb_image_;
+    _depth_image = depth_image_;
 }
 
 PointCloudType::Ptr SemanticMapBuilder::transformCloud(const PointCloudType::ConstPtr& in_cloud,
@@ -85,14 +90,50 @@ PointCloudType::Ptr SemanticMapBuilder::filterCloud(const PointCloudType::ConstP
     return cloud_filtered_xyz;
 }
 
+void SemanticMapBuilder::computeDetection(Eigen::Vector2i &p_min,
+                                          Eigen::Vector2i &p_max,
+                                          std::vector<Eigen::Vector2i> &pixels,
+                                          const PointCloudType::Ptr &in_cloud){
+    pixels.resize(in_cloud->points.size());
+    for(int i=0; i<in_cloud->points.size(); i++){
 
-Detections SemanticMapBuilder::detectObjects(cv::Mat rgb_image,
-                                             const lucrezio_logical_camera::LogicalImage::ConstPtr& logical_image_msg,
-                                             const PointCloudType::ConstPtr& depth_cloud_msg){
+        pcl::PointXYZ camera_point = pcl::transformPoint(in_cloud->points[i],_inverse_depth_camera_transform);
+        Eigen::Vector3f image_point = _K*Eigen::Vector3f(camera_point.x,camera_point.y,camera_point.z);
+
+        const float& z=image_point.z();
+        image_point.head<2>()/=z;
+        int r = image_point.x();
+        int c = image_point.y();
+
+        if(r < p_min.x())
+            p_min.x() = r;
+        if(r > p_max.x())
+            p_max.x() = r;
+
+        if(c < p_min.y())
+            p_min.y() = c;
+        if(c > p_max.y())
+            p_max.y() = c;
+
+        pixels[i] = Eigen::Vector2i(c,r);
+
+        cv::circle(_rgb_image,
+                   cv::Point(r,c),
+                   1,
+                   cv::Scalar(0,0,255));
+    }
+
+
+}
+
+
+void SemanticMapBuilder::detectObjects(const lucrezio_logical_camera::LogicalImage::ConstPtr& logical_image_msg){
     cerr << "DETECTION----------------------------------------" << endl;
-    Detections detections;
+    _detections.clear();
 
-    PointCloudType::Ptr local_map_cloud = transformCloud(depth_cloud_msg, _depth_camera_transform, "/map");
+    double cv_transformation_time = (double)cv::getTickCount();
+    PointCloudType::Ptr local_map_cloud = transformCloud(_depth_cloud, _depth_camera_transform, "/map");
+    ROS_INFO("Transforming cloud took: %f",((double)cv::getTickCount() - cv_transformation_time)/cv::getTickFrequency());
 
     tf::StampedTransform logical_camera_pose;
     tf::poseMsgToTF(logical_image_msg->pose,logical_camera_pose);
@@ -101,91 +142,66 @@ Detections SemanticMapBuilder::detectObjects(cv::Mat rgb_image,
 
         cerr << "Detected model: " << logical_image_msg->models.at(i).type << endl;
 
+        double cv_bb_time = (double)cv::getTickCount();
         PointCloudType::Ptr transformed_bounding_box_cloud = modelBoundingBox(logical_image_msg->models.at(i),
                                                                               tfTransform2eigen(logical_camera_pose));
+        ROS_INFO("Computing BB took: %f",((double)cv::getTickCount() - cv_bb_time)/cv::getTickFrequency());
 
+        double cv_minmax_time = (double)cv::getTickCount();
         pcl::PointXYZ min_pt,max_pt;
         pcl::getMinMax3D(*transformed_bounding_box_cloud,min_pt,max_pt);
         cerr << "Min: " << min_pt << "Max: " << max_pt << endl;
+        ROS_INFO("Computing MinMax took: %f",((double)cv::getTickCount() - cv_minmax_time)/cv::getTickFrequency());
 
+        double cv_filter_time = (double)cv::getTickCount();
         PointCloudType::Ptr cloud_filtered = filterCloud(local_map_cloud,min_pt,max_pt);
+        ROS_INFO("Filtering cloud took: %f",((double)cv::getTickCount() - cv_filter_time)/cv::getTickFrequency());
 
         if(!cloud_filtered->points.empty()){
+
+            double cv_detection_time = (double)cv::getTickCount();
             Eigen::Vector2i p_min(10000,10000);
             Eigen::Vector2i p_max(-10000,-10000);
             std::vector<Eigen::Vector2i> pixels;
-
-            for(int i=0; i<cloud_filtered->points.size(); i++){
-
-                Eigen::Vector3f camera_point = _depth_camera_transform.inverse()*
-                        Eigen::Vector3f(cloud_filtered->points[i].x,
-                                        cloud_filtered->points[i].y,
-                                        cloud_filtered->points[i].z);
-                Eigen::Vector3f image_point = _K*camera_point;
-
-                const float& z=image_point.z();
-                image_point.head<2>()/=z;
-                int r = image_point.x();
-                int c = image_point.y();
-
-                if(r < p_min.x())
-                    p_min.x() = r;
-                if(r > p_max.x())
-                    p_max.x() = r;
-
-                if(c < p_min.y())
-                    p_min.y() = c;
-                if(c > p_max.y())
-                    p_max.y() = c;
-
-                pixels.push_back(Eigen::Vector2i(c,r));
-
-                cv::circle(rgb_image,
-                           cv::Point(r,c),
-                           1,
-                           cv::Scalar(0,0,255));
-            }
-
-            detections.push_back(Detection(logical_image_msg->models.at(i).type,
+            computeDetection(p_min,p_max,pixels,cloud_filtered);
+            _detections.push_back(Detection(logical_image_msg->models.at(i).type,
                                            p_min,
                                            p_max,
                                            pixels));
-
+            ROS_INFO("Computing detection took: %f",((double)cv::getTickCount() - cv_detection_time)/cv::getTickFrequency());
             cerr << "Number of pixels: " << pixels.size() << endl;
             cerr << "Min x: " << p_min.x() << " - Min y: " << p_min.y();
             cerr << " - Max x: " << p_max.x() << " - Max y: " << p_max.y() << endl;
-            cv::rectangle(rgb_image,
+            cv::rectangle(_rgb_image,
                           cv::Point(p_min.x(),p_min.y()),
                           cv::Point(p_max.x(),p_max.y()),
                           cv::Scalar(255,0,0));
+            cerr << endl;
         }
     }
-    cv::imwrite("detections.png",rgb_image);
+    cv::imwrite("detections.png",_rgb_image);
     cerr << "-------------------------------------------------" << endl << endl;
-    return detections;
 }
 
-Objects SemanticMapBuilder::extractBoundingBoxes(const Detections &detections,
-                                                 const cv::Mat& depth_image){
+Objects SemanticMapBuilder::extractBoundingBoxes(const cv::Mat& depth_image){
     cerr << "EXTRACTION---------------------------------------" << endl;
     Objects objects;
 
-    for(int i=0; i < detections.size(); ++i){
+    for(int i=0; i < _detections.size(); ++i){
 
-        const Detection& detection = detections[i];
+        const Detection& detection = _detections[i];
 
         cerr << detection.type << ": [(";
         cerr << detection.p_min.transpose() << ") - (" << detection.p_max.transpose() << ")]" << endl;
 
-        cerr << "Depth image type: " << depth_image.type() << endl;
+        //cerr << "Depth image type: " << depth_image.type() << endl;
 
-        cerr << "Depth camera transform: " << endl;
-        cerr << _depth_camera_transform.translation().transpose() << endl;
-        Eigen::Quaternionf q(_depth_camera_transform.linear());
-        cerr << q.x() << "," << q.y() << "," << q.z() << "," << q.w() << endl;
-
-        cerr << "inverse K: " << endl;
-        cerr << _invK << endl;
+//        cerr << "Depth camera transform: " << endl;
+//        cerr << _depth_camera_transform.translation().transpose() << endl;
+//        Eigen::Quaternionf q(_depth_camera_transform.linear());
+//        cerr << q.x() << "," << q.y() << "," << q.z() << "," << q.w() << endl;
+//        cerr << "inverse K: " << endl;
+//        cerr << _invK << endl;
 
         PointCloudType::Ptr cloud (new PointCloudType);
         PointCloudType::Ptr cloud_filtered (new PointCloudType);
@@ -196,7 +212,6 @@ Objects SemanticMapBuilder::extractBoundingBoxes(const Detections &detections,
             int c = pixel.y();
             const unsigned short& depth = depth_image.at<const unsigned short>(r,c);
             float d = depth * _raw_depth_scale;
-            //cerr << d << " - ";
 
             if(d <= 0.02)
                 continue;
@@ -232,7 +247,7 @@ Objects SemanticMapBuilder::extractBoundingBoxes(const Detections &detections,
 
         cerr << endl;
         cerr << "Centroid: " << centroid.transpose() << endl;
-        cerr << "Size: " << size.transpose() << endl;
+        cerr << "Size: " << size.transpose() << endl << endl;
 
         objects.push_back(Object(detection.type,
                                  centroid,
@@ -269,133 +284,3 @@ tf::Transform SemanticMapBuilder::eigen2tfTransform(const Eigen::Isometry3f &T){
 }
 
 }
-
-//        cv::Mat roi = depth_image(cv::Rect(cv::Point(detection.p_min.x(),detection.p_min.y()),
-//                                           cv::Point(detection.p_max.x(),detection.p_max.y())));
-//        int roi_rows = roi.rows;
-//        int roi_cols = roi.cols;
-//        cerr << "ROI: " << roi_rows << "x" << roi_cols << endl;
-//        cerr << "ROI image type: " << roi.type() << endl;
-//        cv::imwrite("roi.png",roi*5.0);
-
-//        cv::Mat roi_without_floor;
-//        roi_without_floor.create(roi_rows,roi_cols,CV_16UC1);
-//        roi_without_floor = std::numeric_limits<unsigned short>::max();
-//        cerr << "ROI_without_floor image type: " << roi_without_floor.type() << endl;
-
-//        float min_depth=std::numeric_limits<float>::max();
-//        int closest_r=-1;
-//        int closest_c=-1;
-//        for(int r = 0; r < roi_rows; ++r){
-//            const unsigned short* roi_ptr  = roi.ptr<unsigned short>(r);
-//            unsigned short* out_ptr  = roi_without_floor.ptr<unsigned short>(r);
-//            for(int c=0; c < roi_cols; ++c, ++roi_ptr, ++out_ptr) {
-//                const unsigned short& depth = *roi_ptr;
-//                unsigned short& out = *out_ptr;
-//                float d = depth * _raw_depth_scale;
-
-//                //                if(d <= 0)
-//                //                    continue;
-
-//                //                Eigen::Vector3f point = _invK * Eigen::Vector3f(c*d,r*d,d);
-
-//                //                if(point.y() > -_camera_height){
-//                //                    out = depth;
-//                //                    if(d<min_depth){
-//                //                        min_depth = d;
-//                //                        closest_r = r;
-//                //                        closest_c = c;
-//                //                    }
-//                //                }
-
-//                float value = (0.5 * depth_image.rows - (detection.p_min.x() + r)) * d / _focal_length;
-//                if(value > -_camera_height){
-//                    out = depth;
-//                    if(d<min_depth){
-//                        min_depth = d;
-//                        closest_r = r;
-//                        closest_c = c;
-//                    }
-//                }
-//            }
-//        }
-//        cerr << endl;
-//        cerr << "Min depth: " << min_depth << endl;
-//        cerr << "Closest Point: " << closest_r << "," << closest_c << endl;
-
-//        cv::Mat roi_without_floor_gray;
-//        cv::Mat temp;
-//        roi_without_floor.convertTo(roi_without_floor_gray,CV_8UC1,0.00390625);
-//        cv::cvtColor(roi_without_floor_gray,temp,CV_GRAY2BGR);
-//        cv::circle(temp,
-//                   cv::Point(closest_c,closest_r),
-//                   3,
-//                   cv::Scalar(255,0,0),
-//                   3);
-
-
-//        cv::Mat mask;
-//        mask.create(roi_rows+2,roi_cols+2,CV_8UC1);
-//        mask = 0;
-//        cv::Point closest_point(closest_c,closest_r);
-//        cv::Rect ccomp;
-//        cv::floodFill(roi_without_floor_gray,
-//                      mask,
-//                      closest_point,
-//                      255,
-//                      &ccomp,
-//                      cv::Scalar(0.025),
-//                      cv::Scalar(0.025));
-
-//        cerr << "FloodFill output: " << endl;
-//        cerr << "X: " << ccomp.x << " -Y: " << ccomp.y << " -W: " << ccomp.width << " -H: " << ccomp.height << endl;
-//        cerr << "TopLeft: " << ccomp.tl() << " -BottomRight: " << ccomp.br() << endl;
-//        cv::rectangle(temp,ccomp,cv::Scalar(0,0,255));
-
-//        cv::imwrite("roi_without_floor_gray.png",roi_without_floor_gray*5.0);
-//        cv::imwrite("roi_without_floor.png",temp*5.0);
-
-//        double min_value,max_value;
-//        cv::minMaxLoc(roi_without_floor(ccomp), &min_value, &max_value);
-
-//        cerr << "max_value: " << max_value << " -min_value: " << min_value << endl;
-
-//        cv::Point im_size = ccomp.br() - ccomp.tl();
-
-//        float obj_y_size = im_size.x * (min_value*1e-3) / _focal_length;
-//        float obj_x_size = im_size.y * (min_value*1e-3) / _focal_length;
-//        float obj_depth_size = (max_value - min_value)*1e-3;
-
-
-//        for(int r = 0; r < roi_rows; ++r){
-//            const unsigned short* roi_ptr  = roi.ptr<unsigned short>(r);
-//            const unsigned char* mask_ptr = roi_without_floor_gray.ptr<unsigned char>(r);
-//            for(int c=0; c < roi_cols; ++c, ++roi_ptr, ++mask_ptr) {
-//                if((*mask_ptr) != 200)
-//                    continue;
-
-//                const unsigned short& depth = *roi_ptr;
-//                float d = depth * _raw_depth_scale;
-
-//                if (d > 5.0f)
-//                    continue;
-
-//                Eigen::Vector3f world_point = depth_camera_transform*_invK * Eigen::Vector3f(c*d,r*d,d);
-//                centroid += world_point;
-
-//                if(world_point.x()<x_min)
-//                    x_min = world_point.x();
-//                if(world_point.x()>x_max)
-//                    x_max = world_point.x();
-//                if(world_point.y()<y_min)
-//                    y_min = world_point.y();
-//                if(world_point.y()>y_max)
-//                    y_max = world_point.y();
-//                if(world_point.z()<z_min)
-//                    z_min = world_point.z();
-//                if(world_point.z()>z_max)
-//                    z_max = world_point.z();
-
-//                k++;
-//            }
-//        }
