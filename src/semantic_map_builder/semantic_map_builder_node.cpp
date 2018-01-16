@@ -56,6 +56,59 @@ void SemanticMapBuilderNode::cameraInfoCallback(const CameraInfo::ConstPtr &came
     _camera_info_sub.shutdown();
 }
 
+constexpr unsigned int str2int(const char* str, int h = 0){
+    return !str[h] ? 5381 : (str2int(str, h+1) * 33) ^ str[h];
+}
+
+int SemanticMapBuilderNode::type2id(const string &type){
+    switch (str2int(type.c_str())){
+    case str2int("table"):
+        return 0;
+    case str2int("chair"):
+        return 1;
+    case str2int("bookcase"):
+        return 2;
+    case str2int("couch"):
+        return 3;
+    case str2int("cabinet"):
+        return 4;
+    case str2int("plant"):
+        return 5;
+    default:
+        return 6;
+    }
+}
+
+void SemanticMapBuilderNode::makeMarkerFromObject(visualization_msgs::Marker &marker,
+                                                  const Object &object){
+    marker.header.frame_id = "/map";
+    marker.header.stamp = ros::Time::now();
+    marker.ns = "basic_shapes";
+    marker.id = type2id(object.type);
+    marker.type = _shape;
+    marker.action = visualization_msgs::Marker::ADD;
+
+    marker.pose.position.x = object.centroid.x();
+    marker.pose.position.y = object.centroid.y();
+    marker.pose.position.z = object.centroid.z();
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+
+    marker.scale.x = object.size.x();
+    marker.scale.y = object.size.y();
+    marker.scale.z = object.size.z();
+
+    marker.color.r = 0.0f;
+    marker.color.g = 1.0f;
+    marker.color.b = 0.0f;
+    marker.color.a = 1.0;
+
+    marker.lifetime = ros::Duration();
+}
+
+
 void SemanticMapBuilderNode::filterCallback(const LogicalImage::ConstPtr &logical_image_msg,
                                             const PointCloudType::ConstPtr &depth_cloud_msg,
                                             const Image::ConstPtr &rgb_image_msg,
@@ -65,6 +118,7 @@ void SemanticMapBuilderNode::filterCallback(const LogicalImage::ConstPtr &logica
         ROS_INFO("--------------------------");
         ROS_INFO("Executing filter callback!");
         ROS_INFO("--------------------------");
+        cerr << endl;
 
         //Extract rgb and depth image from ROS messages
         cv_bridge::CvImageConstPtr rgb_cv_ptr,depth_cv_ptr;
@@ -108,50 +162,24 @@ void SemanticMapBuilderNode::filterCallback(const LogicalImage::ConstPtr &logica
 
         //extract bounding boxes
         Objects objects = extractBoundingBoxes(depth_image);
+
+        //visualize objects
         if(!objects.empty() && _markers_pub.getNumSubscribers() > 0){
             visualization_msgs::MarkerArray markers;
 
             for(int i=0; i < objects.size(); ++i){
                 visualization_msgs::Marker marker;
-                marker.header.frame_id = "/map";
-                marker.header.stamp = ros::Time::now();
-                marker.ns = "basic_shapes";
-                marker.id = i;
-                marker.type = _shape;
-                marker.action = visualization_msgs::Marker::ADD;
-
                 const Object& object = objects[i];
-
-                marker.pose.position.x = object.centroid.x();
-                marker.pose.position.y = object.centroid.y();
-                marker.pose.position.z = object.centroid.z();
-                marker.pose.orientation.x = 0.0;
-                marker.pose.orientation.y = 0.0;
-                marker.pose.orientation.z = 0.0;
-                marker.pose.orientation.w = 1.0;
-
-                marker.scale.x = object.size.x();
-                marker.scale.y = object.size.y();
-                marker.scale.z = object.size.z();
-
-                marker.color.r = 0.0f;
-                marker.color.g = 1.0f;
-                marker.color.b = 0.0f;
-                marker.color.a = 1.0;
-
-                marker.lifetime = ros::Duration();
-
+                makeMarkerFromObject(marker,object);
                 markers.markers.push_back(marker);
             }
-
             _markers_pub.publish(markers);
         }
 
-        //        _logical_image_sub.unsubscribe();
-        //        _depth_cloud_sub.unsubscribe();
-        //        _rgb_image_sub.unsubscribe();
-        //        _depth_image_sub.unsubscribe();
+        _logical_image_sub.unsubscribe();
+        _depth_cloud_sub.unsubscribe();
+        _rgb_image_sub.unsubscribe();
+        _depth_image_sub.unsubscribe();
     }
-
 }
 }

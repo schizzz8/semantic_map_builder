@@ -19,172 +19,124 @@ void SemanticMapBuilder::setImages(const cv::Mat &rgb_image_, const cv::Mat &dep
     _depth_image = depth_image_;
 }
 
-PointCloudType::Ptr SemanticMapBuilder::transformCloud(const PointCloudType::ConstPtr& in_cloud,
-                                                       const Eigen::Isometry3f& transform,
-                                                       const string &frame_id){
-    PointCloudType::Ptr out_cloud (new PointCloudType ());
-    pcl::transformPointCloud (*in_cloud, *out_cloud, transform);
-    out_cloud->header.frame_id = frame_id;
-    out_cloud->width  = in_cloud->width;
-    out_cloud->height = in_cloud->height;
-    out_cloud->is_dense = false;
+void SemanticMapBuilder::computeWorldBoundingBoxes(BoundingBoxes3D &bounding_boxes,
+                                                   const Eigen::Isometry3f &transform,
+                                                   const Models &models){
+    for(int i=0; i<models.size(); ++i){
+        const lucrezio_logical_camera::Model &model = models[i];
 
-    return out_cloud;
-}
+        tf::Transform model_pose;
+        tf::poseMsgToTF(model.pose,model_pose);
 
-PointCloudType::Ptr SemanticMapBuilder::modelBoundingBox(const lucrezio_logical_camera::Model& model,
-                                                         const Eigen::Isometry3f& transform){
+        std::vector<Eigen::Vector3f> points;
+        points.push_back(transform*tfTransform2eigen(model_pose)*Eigen::Vector3f(model.min.x,model.min.y,model.min.z));
+        points.push_back(transform*tfTransform2eigen(model_pose)*Eigen::Vector3f(model.max.x,model.max.y,model.max.z));
 
-    PointCloudType::Ptr bounding_box_cloud (new PointCloudType ());
+        float x_min=100000,x_max=-100000,y_min=100000,y_max=-100000,z_min=100000,z_max=-100000;
+        for(int i=0; i < 2; ++i){
+            if(points[i].x()<x_min)
+                x_min = points[i].x();
+            if(points[i].x()>x_max)
+                x_max = points[i].x();
+            if(points[i].y()<y_min)
+                y_min = points[i].y();
+            if(points[i].y()>y_max)
+                y_max = points[i].y();
+            if(points[i].z()<z_min)
+                z_min = points[i].z();
+            if(points[i].z()>z_max)
+                z_max = points[i].z();
+        }
 
-    Eigen::Vector3f box_min (model.min.x,model.min.y,model.min.z);
-
-    Eigen::Vector3f box_max (model.max.x,model.max.y,model.max.z);
-
-    float x_range = box_max.x()-box_min.x();
-    float y_range = box_max.y()-box_min.y();
-    float z_range = box_max.z()-box_min.z();
-
-    for(int k=0; k <= 1; k++)
-        for(int j=0; j <= 1; j++)
-            for(int i=0; i <= 1; i++){
-                bounding_box_cloud->points.push_back (pcl::PointXYZ(box_min.x() + i*x_range,
-                                                                    box_min.y() + j*y_range,
-                                                                    box_min.z() + k*z_range));
-            }
-
-    PointCloudType::Ptr transformed_bounding_box_cloud (new PointCloudType ());
-    tf::Transform model_pose;
-    tf::poseMsgToTF(model.pose,model_pose);
-    Eigen::Isometry3f model_transform = transform*tfTransform2eigen(model_pose);
-    pcl::transformPointCloud (*bounding_box_cloud, *transformed_bounding_box_cloud, model_transform);
-
-    return transformed_bounding_box_cloud;
-
-}
-
-PointCloudType::Ptr SemanticMapBuilder::filterCloud(const PointCloudType::ConstPtr &in_cloud,
-                                                    const pcl::PointXYZ& min_pt,
-                                                    const pcl::PointXYZ& max_pt){
-
-    PointCloudType::Ptr cloud_filtered_x (new PointCloudType ());
-    PointCloudType::Ptr cloud_filtered_xy (new PointCloudType ());
-    PointCloudType::Ptr cloud_filtered_xyz (new PointCloudType ());
-
-    pcl::PassThrough<pcl::PointXYZ> pass;
-    pass.setInputCloud (in_cloud);
-    pass.setFilterFieldName ("x");
-    pass.setFilterLimits (min_pt.x,max_pt.x);
-    pass.filter (*cloud_filtered_x);
-
-    pass.setInputCloud (cloud_filtered_x);
-    pass.setFilterFieldName ("y");
-    pass.setFilterLimits (min_pt.y,max_pt.y);
-    pass.filter (*cloud_filtered_xy);
-
-    pass.setInputCloud (cloud_filtered_xy);
-    pass.setFilterFieldName ("z");
-    pass.setFilterLimits (min_pt.z,max_pt.z);
-    pass.filter (*cloud_filtered_xyz);
-
-    return cloud_filtered_xyz;
-}
-
-void SemanticMapBuilder::computeDetection(Eigen::Vector2i &p_min,
-                                          Eigen::Vector2i &p_max,
-                                          std::vector<Eigen::Vector2i> &pixels,
-                                          const PointCloudType::Ptr &in_cloud){
-    pixels.resize(in_cloud->points.size());
-    for(int i=0; i<in_cloud->points.size(); i++){
-
-        pcl::PointXYZ camera_point = pcl::transformPoint(in_cloud->points[i],_inverse_depth_camera_transform);
-        Eigen::Vector3f image_point = _K*Eigen::Vector3f(camera_point.x,camera_point.y,camera_point.z);
-
-        const float& z=image_point.z();
-        image_point.head<2>()/=z;
-        int r = image_point.x();
-        int c = image_point.y();
-
-        if(r < p_min.x())
-            p_min.x() = r;
-        if(r > p_max.x())
-            p_max.x() = r;
-
-        if(c < p_min.y())
-            p_min.y() = c;
-        if(c > p_max.y())
-            p_max.y() = c;
-
-        pixels[i] = Eigen::Vector2i(c,r);
-
-        cv::circle(_rgb_image,
-                   cv::Point(r,c),
-                   1,
-                   cv::Scalar(0,0,255));
+        bounding_boxes[i] = std::make_pair(Eigen::Vector3f(x_min,y_min,z_min),Eigen::Vector3f(x_max,y_max,z_max));
+        _detections[i].type = model.type;
     }
-
-
 }
 
+void SemanticMapBuilder::computeImageBoundingBoxes(const BoundingBoxes3D &bounding_boxes){
+    for(int i=0; i < _depth_cloud->size(); ++i){
+        for(int j=0; j < bounding_boxes.size(); ++j){
+            if(inRange(_depth_cloud->points[i],bounding_boxes[j])){
+                Eigen::Vector3f image_point = _K*Eigen::Vector3f(_depth_cloud->points[i].x,
+                                                                 _depth_cloud->points[i].y,
+                                                                 _depth_cloud->points[i].z);
 
-void SemanticMapBuilder::detectObjects(const lucrezio_logical_camera::LogicalImage::ConstPtr& logical_image_msg){
-    cerr << "DETECTION----------------------------------------" << endl;
-    _detections.clear();
+                const float& z=image_point.z();
+                image_point.head<2>()/=z;
+                int r = image_point.x();
+                int c = image_point.y();
+                int &r_min = _detections[j].p_min.x();
+                int &c_min = _detections[j].p_min.y();
+                int &r_max = _detections[j].p_max.x();
+                int &c_max = _detections[j].p_max.y();
 
-    double cv_transformation_time = (double)cv::getTickCount();
-    PointCloudType::Ptr local_map_cloud = transformCloud(_depth_cloud, _depth_camera_transform, "/map");
-    ROS_INFO("Transforming cloud took: %f",((double)cv::getTickCount() - cv_transformation_time)/cv::getTickFrequency());
+                if(r < r_min)
+                    r_min = r;
+                if(r > r_max)
+                    r_max = r;
 
-    tf::StampedTransform logical_camera_pose;
-    tf::poseMsgToTF(logical_image_msg->pose,logical_camera_pose);
+                if(c < c_min)
+                    c_min = c;
+                if(c > c_max)
+                    c_max = c;
 
-    for(int i=0; i < logical_image_msg->models.size(); i++){
+                _detections[j].pixels.push_back(Eigen::Vector2i(c,r));
 
-        cerr << "Detected model: " << logical_image_msg->models.at(i).type << endl;
-
-        double cv_bb_time = (double)cv::getTickCount();
-        PointCloudType::Ptr transformed_bounding_box_cloud = modelBoundingBox(logical_image_msg->models.at(i),
-                                                                              tfTransform2eigen(logical_camera_pose));
-        ROS_INFO("Computing BB took: %f",((double)cv::getTickCount() - cv_bb_time)/cv::getTickFrequency());
-
-        double cv_minmax_time = (double)cv::getTickCount();
-        pcl::PointXYZ min_pt,max_pt;
-        pcl::getMinMax3D(*transformed_bounding_box_cloud,min_pt,max_pt);
-        cerr << "Min: " << min_pt << "Max: " << max_pt << endl;
-        ROS_INFO("Computing MinMax took: %f",((double)cv::getTickCount() - cv_minmax_time)/cv::getTickFrequency());
-
-        double cv_filter_time = (double)cv::getTickCount();
-        PointCloudType::Ptr cloud_filtered = filterCloud(local_map_cloud,min_pt,max_pt);
-        ROS_INFO("Filtering cloud took: %f",((double)cv::getTickCount() - cv_filter_time)/cv::getTickFrequency());
-
-        if(!cloud_filtered->points.empty()){
-
-            double cv_detection_time = (double)cv::getTickCount();
-            Eigen::Vector2i p_min(10000,10000);
-            Eigen::Vector2i p_max(-10000,-10000);
-            std::vector<Eigen::Vector2i> pixels;
-            computeDetection(p_min,p_max,pixels,cloud_filtered);
-            _detections.push_back(Detection(logical_image_msg->models.at(i).type,
-                                           p_min,
-                                           p_max,
-                                           pixels));
-            ROS_INFO("Computing detection took: %f",((double)cv::getTickCount() - cv_detection_time)/cv::getTickFrequency());
-            cerr << "Number of pixels: " << pixels.size() << endl;
-            cerr << "Min x: " << p_min.x() << " - Min y: " << p_min.y();
-            cerr << " - Max x: " << p_max.x() << " - Max y: " << p_max.y() << endl;
-            cv::rectangle(_rgb_image,
-                          cv::Point(p_min.x(),p_min.y()),
-                          cv::Point(p_max.x(),p_max.y()),
-                          cv::Scalar(255,0,0));
-            cerr << endl;
+                break;
+            }
         }
     }
-    cv::imwrite("detections.png",_rgb_image);
-    cerr << "-------------------------------------------------" << endl << endl;
+}
+
+void SemanticMapBuilder::detectObjects(const lucrezio_logical_camera::LogicalImage::ConstPtr &logical_image_msg){
+    ROS_INFO("DETECTION----------------------------------------");
+    cerr << endl;
+
+    int num_models = logical_image_msg->models.size();
+    cerr << "num_models: " << num_models;
+
+    _detections.clear();
+    _detections.resize(num_models);
+
+    //Compute world bounding boxes
+    double cv_wbb_time = (double)cv::getTickCount();
+    BoundingBoxes3D bounding_boxes(num_models);
+    tf::StampedTransform logical_camera_pose;
+    tf::poseMsgToTF(logical_image_msg->pose,logical_camera_pose);
+    computeWorldBoundingBoxes(bounding_boxes,
+                              _inverse_depth_camera_transform*tfTransform2eigen(logical_camera_pose),
+                              logical_image_msg->models);
+    ROS_INFO("Computing WBB took: %f",((double)cv::getTickCount() - cv_wbb_time)/cv::getTickFrequency());
+
+    //Compute image bounding boxes
+    double cv_ibb_time = (double)cv::getTickCount();
+    computeImageBoundingBoxes(bounding_boxes);
+    ROS_INFO("Computing IBB took: %f",((double)cv::getTickCount() - cv_ibb_time)/cv::getTickFrequency());
+
+    cerr << endl;
+
+    //print result
+    for(int i=0; i < num_models; ++i){
+
+        if(_detections[i].pixels.empty())
+            continue;
+
+        cerr << "-" << _detections[i].type << ":" << endl;
+        cerr << "\t>>World Bounding Box: [";
+        cerr << "(" << bounding_boxes[i].first.x() << "," << bounding_boxes[i].first.y() << "," << bounding_boxes[i].first.z() << "),";
+        cerr << "(" << bounding_boxes[i].second.x() << "," << bounding_boxes[i].second.y() << "," << bounding_boxes[i].second.z() << ")]" << endl;
+        cerr << "\t>>Image Bounding Box: [";
+        cerr << "(" << _detections[i].p_min.x() << "," << _detections[i].p_min.y() << "),";
+        cerr << "(" << _detections[i].p_max.x() << "," << _detections[i].p_max.y() << ")]" << endl;
+        cerr << "\t>>Number of Pixels: " << _detections[i].pixels.size() << endl;
+        cerr << endl;
+    }
 }
 
 Objects SemanticMapBuilder::extractBoundingBoxes(const cv::Mat& depth_image){
-    cerr << "EXTRACTION---------------------------------------" << endl;
+    ROS_INFO("EXTRACTION---------------------------------------");
+    cerr << endl;
+
     Objects objects;
 
     for(int i=0; i < _detections.size(); ++i){
@@ -196,12 +148,12 @@ Objects SemanticMapBuilder::extractBoundingBoxes(const cv::Mat& depth_image){
 
         //cerr << "Depth image type: " << depth_image.type() << endl;
 
-//        cerr << "Depth camera transform: " << endl;
-//        cerr << _depth_camera_transform.translation().transpose() << endl;
-//        Eigen::Quaternionf q(_depth_camera_transform.linear());
-//        cerr << q.x() << "," << q.y() << "," << q.z() << "," << q.w() << endl;
-//        cerr << "inverse K: " << endl;
-//        cerr << _invK << endl;
+        //        cerr << "Depth camera transform: " << endl;
+        //        cerr << _depth_camera_transform.translation().transpose() << endl;
+        //        Eigen::Quaternionf q(_depth_camera_transform.linear());
+        //        cerr << q.x() << "," << q.y() << "," << q.z() << "," << q.w() << endl;
+        //        cerr << "inverse K: " << endl;
+        //        cerr << _invK << endl;
 
         PointCloudType::Ptr cloud (new PointCloudType);
         PointCloudType::Ptr cloud_filtered (new PointCloudType);
@@ -249,7 +201,8 @@ Objects SemanticMapBuilder::extractBoundingBoxes(const cv::Mat& depth_image){
         cerr << "Centroid: " << centroid.transpose() << endl;
         cerr << "Size: " << size.transpose() << endl << endl;
 
-        objects.push_back(Object(detection.type,
+        std::string object_type = detection.type.substr(0,detection.type.find_first_of("_"));
+        objects.push_back(Object(object_type,
                                  centroid,
                                  size));
 

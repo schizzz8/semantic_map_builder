@@ -25,9 +25,9 @@ typedef pcl::PointCloud<pcl::PointXYZ> PointCloudType;
 
 class Detection{
 public:
-    Detection(const std::string& type_=0,
-              const Eigen::Vector2i& p_min_ = Eigen::Vector2i::Zero(),
-              const Eigen::Vector2i& p_max_ = Eigen::Vector2i::Zero(),
+    Detection(const std::string& type_="",
+              const Eigen::Vector2i& p_min_ = Eigen::Vector2i(10000,10000),
+              const Eigen::Vector2i& p_max_ = Eigen::Vector2i(-10000,-10000),
               const std::vector<Eigen::Vector2i>& pixels_ = std::vector<Eigen::Vector2i>()):
         type(type_),
         p_min(p_min_),
@@ -52,6 +52,9 @@ public:
 
 typedef std::vector<Detection> Detections;
 typedef std::vector<Object> Objects;
+typedef std::vector<lucrezio_logical_camera::Model> Models;
+typedef std::pair<Eigen::Vector3f,Eigen::Vector3f> BoundingBox3D;
+typedef std::vector<BoundingBox3D> BoundingBoxes3D;
 
 class SemanticMapBuilder{
 public:
@@ -67,22 +70,15 @@ public:
     Objects extractBoundingBoxes(const cv::Mat &depth_image);
 
 protected:
-    PointCloudType::Ptr transformCloud(const PointCloudType::ConstPtr &in_cloud,
-                                       const Eigen::Isometry3f& transform,
-                                       const std::string& frame_id);
 
-    PointCloudType::Ptr modelBoundingBox(const lucrezio_logical_camera::Model& model,
-                                         const Eigen::Isometry3f& transform);
+    void computeWorldBoundingBoxes(BoundingBoxes3D &bounding_boxes,const Eigen::Isometry3f &transform,const Models &models);
+    void computeImageBoundingBoxes(const BoundingBoxes3D &bounding_boxes);
 
-    PointCloudType::Ptr filterCloud(const PointCloudType::ConstPtr &in_cloud,
-                                    const pcl::PointXYZ& min_pt,
-                                    const pcl::PointXYZ& max_pt);
-
-    void computeDetection(Eigen::Vector2i& p_min,
-                          Eigen::Vector2i& p_max,
-                          std::vector<Eigen::Vector2i>& pixels,
-                          const PointCloudType::Ptr& in_cloud);
-
+    inline bool inRange(const pcl::PointXYZ &point, const BoundingBox3D &bounding_box){
+        return (point.x >= bounding_box.first.x() && point.x < bounding_box.second.x() &&
+                point.y >= bounding_box.first.y() && point.y < bounding_box.second.y() &&
+                point.z >= bounding_box.first.z() && point.z < bounding_box.second.z());
+    }
 
     float _raw_depth_scale;
     float _camera_height;

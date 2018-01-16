@@ -51,6 +51,8 @@ protected:
     image_transport::ImageTransport _it;
     image_transport::Publisher _label_image_pub;
 
+    int type2id(const std::string &type);
+    void makeMarkerFromObject(visualization_msgs::Marker &marker, const Object &object);
     uint32_t _shape;
     ros::Publisher _markers_pub;
 };
