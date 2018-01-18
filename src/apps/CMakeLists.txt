@@ -4,12 +4,3 @@ target_link_libraries(semantic_map_builder_node_app
   ${catkin_LIBRARIES}
 )
 
-add_executable(image_labeler_node image_labeler_node.cpp)
-target_link_libraries(image_labeler_node
-  ${catkin_LIBRARIES}
-)
-
-#add_executable(semantic_map_builder_node_example semantic_map_builder_node_example.cpp)
-#target_link_libraries(semantic_map_builder_node_example
-#  ${catkin_LIBRARIES}
-#)

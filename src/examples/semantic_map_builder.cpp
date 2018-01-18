@@ -146,15 +146,6 @@ Objects SemanticMapBuilder::extractBoundingBoxes(const cv::Mat& depth_image){
         cerr << detection.type << ": [(";
         cerr << detection.p_min.transpose() << ") - (" << detection.p_max.transpose() << ")]" << endl;
 
-        //cerr << "Depth image type: " << depth_image.type() << endl;
-
-        //        cerr << "Depth camera transform: " << endl;
-        //        cerr << _depth_camera_transform.translation().transpose() << endl;
-        //        Eigen::Quaternionf q(_depth_camera_transform.linear());
-        //        cerr << q.x() << "," << q.y() << "," << q.z() << "," << q.w() << endl;
-        //        cerr << "inverse K: " << endl;
-        //        cerr << _invK << endl;
-
         PointCloudType::Ptr cloud (new PointCloudType);
         PointCloudType::Ptr cloud_filtered (new PointCloudType);
         const std::vector<Eigen::Vector2i>& pixels = detection.pixels;
