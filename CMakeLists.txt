@@ -26,6 +26,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   visualization_msgs
   lucrezio_logical_camera
+  message_generation
 )
 
 ## System dependencies are found with CMake's conventions
@@ -69,11 +70,12 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
+ add_message_files(
+   FILES
+   Pixel.msg
+   Detection.msg
+   DetectionArray.msg
+ )
 
 ## Generate services in the 'srv' folder
 # add_service_files(
@@ -90,10 +92,10 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   geometry_msgs#   nav_msgs#   sensor_msgs#   std_msgs
-# )
+ generate_messages(
+   DEPENDENCIES
+   geometry_msgs nav_msgs sensor_msgs  std_msgs
+ )
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -127,7 +129,7 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 catkin_package(
   INCLUDE_DIRS src
   LIBRARIES semantic_map_builder_library
-  CATKIN_DEPENDS cv_bridge geometry_msgs image_transport nav_msgs pcl_ros roscpp rospy sensor_msgs std_msgs visualization_msgs lucrezio_logical_camera
+  CATKIN_DEPENDS cv_bridge geometry_msgs image_transport nav_msgs pcl_ros roscpp rospy sensor_msgs std_msgs visualization_msgs lucrezio_logical_camera message_runtime
 #  DEPENDS system_lib
 )
 
