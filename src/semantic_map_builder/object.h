@@ -6,7 +6,7 @@
 
 namespace semantic_map_builder {
 
-typedef pcl::PointCloud<Eigen::Vector3f> PointCloudType;
+typedef pcl::PointCloud<pcl::PointXYZ> PointCloudType;
 
 class Object{
 public:
@@ -21,6 +21,8 @@ public:
     bool operator < (const Object &o);
     bool operator == (const Object &o);
 
+    void merge(const Object &o);
+
     inline const int id() const {return _id;}
     inline const std::string& type() const {return _type;}
     inline const Eigen::Vector3f& lower() const {return _lower;}
@@ -28,7 +30,6 @@ public:
     inline const Eigen::Vector3f& centroid() const {return _centroid;}
     inline const Eigen::Vector3f& halfSize() const {return _half_size;}
 
-protected:
     int _id;
     std::string _type;
     Eigen::Vector3f _lower;

@@ -22,7 +22,8 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
-#include <semantic_map_builder/DetectionArray.h>
+#include <semantic_map_builder/detection.h>
+#include <semantic_map_builder/ImageBoundingBoxesArray.h>
 
 
 typedef pcl::PointCloud<pcl::PointXYZ> PointCloudType;
@@ -49,10 +50,10 @@ public:
 
         _synchronizer.registerCallback(boost::bind(&DetectionSimulator::filterCallback, this, _1, _2, _3));
 
-        _detections_pub = _nh.advertise<semantic_map_builder::DetectionArray>("/detections", 1);
+        _image_bounding_boxes_pub = _nh.advertise<semantic_map_builder::ImageBoundingBoxesArray>("/image_bounding_boxes", 1);
         _label_image_pub = _it.advertise("/camera/rgb/label_image", 1);
 
-        ROS_INFO("Starting training set generator node!");
+        ROS_INFO("Starting detection simulator node!");
     }
 
     void cameraInfoCallback(const sensor_msgs::CameraInfo::ConstPtr& camera_info_msg){
@@ -119,12 +120,15 @@ public:
             _depth_cloud = depth_cloud_msg;
             this->detectObjects(logical_image_msg);
 
-            //publish
-            _detections_pub.publish(_d);
+            //publish image bounding boxes
+            publishImageBoundingBoxes();
             sensor_msgs::ImagePtr label_image_msg = cv_bridge::CvImage(std_msgs::Header(),
                                                                        "bgr8",
                                                                        _rgb_image).toImageMsg();
             _label_image_pub.publish(label_image_msg);
+
+            std::cerr << ".";
+//            _logical_image_sub.unsubscribe();
         }
     }
 
@@ -140,8 +144,8 @@ protected:
     Eigen::Isometry3f _depth_camera_transform,_inverse_depth_camera_transform;
     PointCloudType::ConstPtr _depth_cloud;
 
-    semantic_map_builder::DetectionArray _d;
-    ros::Publisher _detections_pub;
+    semantic_map_builder::Detections _detections;
+    ros::Publisher _image_bounding_boxes_pub;
 
     message_filters::Subscriber<lucrezio_logical_camera::LogicalImage> _logical_image_sub;
     message_filters::Subscriber<PointCloudType> _depth_cloud_sub;
@@ -209,20 +213,10 @@ private:
                     z_max = points[i].z();
             }
             bounding_boxes[i] = std::make_pair(Eigen::Vector3f(x_min,y_min,z_min),Eigen::Vector3f(x_max,y_max,z_max));
-            _d.detections[i].type = model.type;
+            _detections[i]._type = model.type;
         }
     }
 
-    void initDetections(int num_models){
-        _d.detections.clear();
-        _d.detections.resize(num_models);
-        for(int i=0; i<num_models; ++i){
-            _d.detections[i].top_left.r = std::numeric_limits<int>::max();
-            _d.detections[i].top_left.c = std::numeric_limits<int>::max();
-            _d.detections[i].bottom_right.r = -std::numeric_limits<int>::max();
-            _d.detections[i].bottom_right.c = -std::numeric_limits<int>::max();
-        }
-    }
 
     inline bool inRange(const pcl::PointXYZ &point, const BoundingBox3D &bounding_box){
         return (point.x >= bounding_box.first.x() && point.x < bounding_box.second.x() &&
@@ -240,33 +234,25 @@ private:
 
                     const float& z=image_point.z();
                     image_point.head<2>()/=z;
-                    semantic_map_builder::Pixel pixel;
-                    pixel.r = image_point.y();
-                    pixel.c = image_point.x();
+                    int r = image_point.x();
+                    int c = image_point.y();
+                    int &r_min = _detections[j]._top_left.x();
+                    int &c_min = _detections[j]._top_left.y();
+                    int &r_max = _detections[j]._bottom_right.x();
+                    int &c_max = _detections[j]._bottom_right.y();
 
-                    int r_min = _d.detections[j].top_left.r;
-                    int c_min = _d.detections[j].top_left.c;
-                    int r_max = _d.detections[j].bottom_right.r;
-                    int c_max = _d.detections[j].bottom_right.c;
+                    if(r < r_min)
+                        r_min = r;
+                    if(r > r_max)
+                        r_max = r;
 
-                    if(pixel.r < r_min)
-                        r_min = pixel.r;
-                    if(pixel.r > r_max)
-                        r_max = pixel.r;
+                    if(c < c_min)
+                        c_min = c;
+                    if(c > c_max)
+                        c_max = c;
 
-                    if(pixel.c < c_min)
-                        c_min = pixel.c;
-                    if(pixel.c > c_max)
-                        c_max = pixel.c;
-
-                    _d.detections[j].top_left.r = r_min;
-                    _d.detections[j].top_left.c = c_min;
-                    _d.detections[j].bottom_right.r = r_max;
-                    _d.detections[j].bottom_right.c = c_max;
-
-                    _d.detections[j].pixels.push_back(pixel);
-
-                    _rgb_image.at<cv::Vec3b>(pixel.r,pixel.c) = cv::Vec3b(255,0,0);
+                    _detections[j]._pixels.push_back(Eigen::Vector2i(c,r));
+                    _rgb_image.at<cv::Vec3b>(c,r) = cv::Vec3b(255,0,0);
 
                     break;
                 }
@@ -275,12 +261,11 @@ private:
     }
 
     void detectObjects(const lucrezio_logical_camera::LogicalImage::ConstPtr& logical_image_msg){
-        ROS_INFO("DETECTION----------------------------------------");
-        std::cerr << std::endl;
 
         int num_models = logical_image_msg->models.size();
         std::cerr << "num_models: " << num_models << std::endl;
-        initDetections(num_models);
+        _detections.clear();
+        _detections.resize(num_models);
 
         //Compute world bounding boxes
         double cv_wbb_time = (double)cv::getTickCount();
@@ -296,6 +281,30 @@ private:
         double cv_ibb_time = (double)cv::getTickCount();
         computeImageBoundingBoxes(bounding_boxes);
         ROS_INFO("Computing IBB took: %f",((double)cv::getTickCount() - cv_ibb_time)/cv::getTickFrequency());
+    }
+
+    void publishImageBoundingBoxes(){
+//        std::cerr << "Publishing detections" << std::endl;
+        semantic_map_builder::ImageBoundingBoxesArray image_bounding_boxes;
+        image_bounding_boxes.header.frame_id = "camera_depth_optical_frame";
+        image_bounding_boxes.header.stamp = ros::Time::now();
+        semantic_map_builder::ImageBoundingBox image_bounding_box;
+        for(int i=0; i < _detections.size(); ++i){
+//            std::cerr << "#" << i+1 << std::endl;
+            image_bounding_box.type = _detections[i].type();
+            image_bounding_box.top_left.r = _detections[i].topLeft().x();
+            image_bounding_box.top_left.c = _detections[i].topLeft().y();
+            image_bounding_box.bottom_right.r = _detections[i].bottomRight().x();
+            image_bounding_box.bottom_right.c = _detections[i].bottomRight().y();
+            semantic_map_builder::Pixel pixel;
+            for(int j=0; j < _detections[i]._pixels.size(); ++j){
+                pixel.r = _detections[i]._pixels[j].x();
+                pixel.c = _detections[i]._pixels[j].y();
+                image_bounding_box.pixels.push_back(pixel);
+            }
+            image_bounding_boxes.image_bounding_boxes.push_back(image_bounding_box);
+        }
+        _image_bounding_boxes_pub.publish(image_bounding_boxes);
     }
 };
 

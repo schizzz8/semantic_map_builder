@@ -14,16 +14,11 @@ class Builder{
 public:
     Builder();
 
-    inline void setK(const Eigen::Matrix3f& K_){_K = K_; _invK = _K.inverse();}
-    void setImage(const cv::Mat& depth_image_){_depth_image = depth_image_;}
-
     void extractObjects(const Detections &detections);
 
     void findAssociations();
 
     void mergeMaps();
-
-    inline const std::vector<Association>& associations() const {return _associations;}
 
 protected:
     float _raw_depth_scale;

@@ -7,6 +7,9 @@ using namespace std;
 Builder::Builder(){
     _globalT = Eigen::Isometry3f::Identity();
 
+    _min_distance = 0.02;
+    _max_distance = 5.0;
+
     _local_set = false;
     _global_set = false;
 }
@@ -27,7 +30,9 @@ PointCloudType::Ptr Builder::unproject(const std::vector<Eigen::Vector2i> &pixel
             continue;
 
         Eigen::Vector3f camera_point = _invK * Eigen::Vector3f(c*d,r*d,d);
-        cloud->push_back(camera_point);
+        Eigen::Vector3f map_point = _globalT*camera_point;
+//        std::cerr << map_point.transpose() << " ";
+        cloud->push_back(pcl::PointXYZ(map_point.x(),map_point.y(),map_point.z()));
 
     }
     return cloud;
@@ -43,18 +48,18 @@ void Builder::getLowerUpper3d(const PointCloudType &cloud, Eigen::Vector3f &lowe
 
     for(int i=0; i < cloud.size(); ++i){
 
-        if(cloud.points[i].x() < lower.x())
-            lower.x() = cloud.points[i].x();
-        if(cloud.points[i].x() > upper.x())
-            upper.x() = cloud.points[i].x();
-        if(cloud.points[i].y() < lower.y())
-            lower.y() = cloud.points[i].y();
-        if(cloud.points[i].y() > upper.y())
-            upper.y() = cloud.points[i].y();
-        if(cloud.points[i].z() < lower.z())
-            lower.z() = cloud.points[i].z();
-        if(cloud.points[i].z() > upper.z())
-            upper.z() = cloud.points[i].z();
+        if(cloud.points[i].x < lower.x())
+            lower.x() = cloud.points[i].x;
+        if(cloud.points[i].x > upper.x())
+            upper.x() = cloud.points[i].x;
+        if(cloud.points[i].y < lower.y())
+            lower.y() = cloud.points[i].y;
+        if(cloud.points[i].y > upper.y())
+            upper.y() = cloud.points[i].y;
+        if(cloud.points[i].z < lower.z())
+            lower.z() = cloud.points[i].z;
+        if(cloud.points[i].z > upper.z())
+            upper.z() = cloud.points[i].z;
     }
 }
 
@@ -73,13 +78,17 @@ void Builder::extractObjects(const Detections &detections){
 
         const Detection& detection = detections[i];
 
-        cerr << detection.type() << ": [(";
-        cerr << detection.topLeft().transpose() << ") - (" << detection.bottomRight().transpose() << ")]" << endl;
+        cerr << detection._type << ": [(";
+        cerr << detection._top_left.transpose() << ") - (" << detection._bottom_right.transpose() << ")]" << endl;
 
-        PointCloudType::Ptr cloud = unproject(detection.pixels());
+        if((detection._bottom_right-detection._top_left).norm() < 1e-3)
+            continue;
+
+        std::cerr << "Unprojecting" << std::endl;
+        PointCloudType::Ptr cloud = unproject(detection._pixels);
 
         PointCloudType::Ptr cloud_filtered (new PointCloudType);
-        pcl::StatisticalOutlierRemoval<Eigen::Vector3f> sor;
+        pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
         sor.setInputCloud (cloud);
         sor.setMeanK (10);
         sor.setStddevMulThresh (1.0);
@@ -88,7 +97,9 @@ void Builder::extractObjects(const Detections &detections){
         Eigen::Vector3f lower,upper;
         getLowerUpper3d(*cloud_filtered,lower,upper);
 
-        std::string object_type = detection.type().substr(0,detection.type().find_first_of("_"));
+        std::string object_type = detection._type.substr(0,detection._type.find_first_of("_"));
+
+        std::cerr << "BB: [(" << lower.transpose() << "," << upper.transpose() << ")]" << std::endl;
 
         if(populate_global)
             _global_map.push_back(Object(i,
@@ -170,10 +181,8 @@ void Builder::mergeMaps(){
             if(local.type() != global_associated.type())
                 continue;
 
-
+            global_associated.merge(local);
         }
-
     }
-
 }
 }
