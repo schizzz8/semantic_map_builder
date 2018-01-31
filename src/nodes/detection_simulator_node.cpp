@@ -88,6 +88,9 @@ public:
             ROS_INFO("--------------------------");
             std::cerr << std::endl;
 
+            //Save timestamp
+            _last_timestamp = logical_image_msg->header.stamp;
+
             //Extract rgb and depth image from ROS messages
             cv_bridge::CvImageConstPtr rgb_cv_ptr;
             try{
@@ -127,7 +130,7 @@ public:
                                                                        _rgb_image).toImageMsg();
             _label_image_pub.publish(label_image_msg);
 
-            std::cerr << ".";
+//            std::cerr << ".";
 //            _logical_image_sub.unsubscribe();
         }
     }
@@ -144,9 +147,6 @@ protected:
     Eigen::Isometry3f _depth_camera_transform,_inverse_depth_camera_transform;
     PointCloudType::ConstPtr _depth_cloud;
 
-    semantic_map_builder::Detections _detections;
-    ros::Publisher _image_bounding_boxes_pub;
-
     message_filters::Subscriber<lucrezio_logical_camera::LogicalImage> _logical_image_sub;
     message_filters::Subscriber<PointCloudType> _depth_cloud_sub;
     message_filters::Subscriber<sensor_msgs::Image> _rgb_image_sub;
@@ -154,6 +154,10 @@ protected:
     PointCloudType,
     sensor_msgs::Image> FilterSyncPolicy;
     message_filters::Synchronizer<FilterSyncPolicy> _synchronizer;
+
+    ros::Time _last_timestamp;
+    semantic_map_builder::Detections _detections;
+    ros::Publisher _image_bounding_boxes_pub;
 
     image_transport::ImageTransport _it;
     image_transport::Publisher _label_image_pub;
@@ -287,7 +291,7 @@ private:
 //        std::cerr << "Publishing detections" << std::endl;
         semantic_map_builder::ImageBoundingBoxesArray image_bounding_boxes;
         image_bounding_boxes.header.frame_id = "camera_depth_optical_frame";
-        image_bounding_boxes.header.stamp = ros::Time::now();
+        image_bounding_boxes.header.stamp = _last_timestamp;
         semantic_map_builder::ImageBoundingBox image_bounding_box;
         for(int i=0; i < _detections.size(); ++i){
 //            std::cerr << "#" << i+1 << std::endl;
@@ -312,7 +316,15 @@ int main(int argc, char** argv){
     ros::init(argc, argv, "detection_simulator");
     ros::NodeHandle nh;
     DetectionSimulator simulator(nh);
-    ros::spin();
+
+    //ros::spin();
+
+    ros::Rate loop_rate(1);
+    while(ros::ok()){
+        ros::spinOnce();
+        loop_rate.sleep();
+    }
+
 
     return 0;
 }

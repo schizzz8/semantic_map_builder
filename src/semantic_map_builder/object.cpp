@@ -8,7 +8,8 @@ Object::Object(const int id_,
                const string &type_,
                const Eigen::Vector3f &a_,
                const Eigen::Vector3f &b_,
-               const Build &b){
+               const Build &b,
+               const PointCloudType &cloud_){
     _id = id_;
     _type = type_;
 
@@ -28,6 +29,8 @@ Object::Object(const int id_,
     default:
         break;
     }
+
+    _cloud = cloud_;
 }
 
 bool Object::operator <(const Object &o){

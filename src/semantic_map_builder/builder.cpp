@@ -106,15 +106,15 @@ void Builder::extractObjects(const Detections &detections){
                                          object_type,
                                          lower,
                                          upper,
-                                         Object::Build::MinMax));
+                                         Object::Build::MinMax,
+                                         *cloud_filtered));
         else
             _local_map.push_back(Object(i,
                                         object_type,
                                         lower,
                                         upper,
-                                        Object::Build::MinMax));
-
-
+                                        Object::Build::MinMax,
+                                        *cloud_filtered));
     }
 }
 
@@ -126,13 +126,21 @@ void Builder::findAssociations(){
     const int local_size = _local_map.size();
     const int global_size = _global_map.size();
 
+    std::cerr << "[Data Association] ";
+    std::cerr << "{Local Map size: " << local_size << "} ";
+    std::cerr << "- {Global Map size: " << global_size << "}" << std::endl;
+
     _associations.clear();
 
     for(int i=0; i < global_size; ++i){
         const Object &global = _global_map[i];
         const string &global_type = global.type();
+
+        std::cerr << "\t>> Global: " << global_type;
+
         Object local_best;
         float best_error = std::numeric_limits<float>::max();
+
         for(int j=0; j < local_size; ++j){
             const Object &local = _local_map[j];
             const string &local_type = local.type();
@@ -151,6 +159,8 @@ void Builder::findAssociations(){
         }
         if(local_best.type() == "")
             continue;
+
+        std::cerr << " - Local ID: " << local_best.type() << std::endl;
 
         _associations.push_back(Association(global,local_best));
     }

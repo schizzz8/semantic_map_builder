@@ -16,7 +16,8 @@ public:
            const std::string &type_ = "",
            const Eigen::Vector3f &a_ = Eigen::Vector3f::Zero(),
            const Eigen::Vector3f &b_ = Eigen::Vector3f::Zero(),
-           const Build &b = Build::MinMax);
+           const Build &b = Build::MinMax,
+           const PointCloudType& cloud_ = PointCloudType());
 
     bool operator < (const Object &o);
     bool operator == (const Object &o);

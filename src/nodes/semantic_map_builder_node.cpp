@@ -121,9 +121,14 @@ public:
             }
 
         }
-        std::cerr << ".";
-        _image_bounding_boxes_sub.unsubscribe();
-        _depth_image_sub.unsubscribe();
+//        std::cerr << ".";
+
+//        if(_first){
+//            _first = false;
+//        } else {
+//            _image_bounding_boxes_sub.unsubscribe();
+//            _depth_image_sub.unsubscribe();
+//        }
     }
 
 protected:
@@ -131,6 +136,7 @@ protected:
 
     ros::Subscriber _camera_info_sub;
     bool _got_info;
+    bool _first = true;
 
     tf::TransformListener _listener;
 
@@ -183,8 +189,14 @@ private:
             return 4;
         case str2int("plant"):
             return 5;
-        default:
+        case str2int("milk"):
             return 6;
+        case str2int("salt"):
+            return 7;
+        case str2int("tomato"):
+            return 8;
+        default:
+            return 9;
         }
     }
     void makeMarkerFromObject(visualization_msgs::Marker &marker, const Object &object){
